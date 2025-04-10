@@ -84,6 +84,7 @@ docker build -t bitnami/APP:latest .
 | `KSQL_LOGS_DIR`                  | KSQL logs directory.                                                                      | `${KSQL_BASE_DIR}/logs`                   |
 | `KSQL_CONF_FILE`                 | Main KSQL configuration file.                                                             | `${KSQL_CONF_DIR}/ksql-server.properties` |
 | `KSQL_CERTS_DIR`                 | KSQL certificates directory.                                                              | `${KSQL_BASE_DIR}/certs`                  |
+| `KSQL_CONNECTION_TIMEOUT`        | KSQL connection attempt timeout.                                                          | `10`                                      |
 | `KSQL_DAEMON_USER`               | Users that will execute the KSQL Server process.                                          | `ksql`                                    |
 | `KSQL_DAEMON_GROUP`              | Group that will execute the KSQL Server process.                                          | `ksql`                                    |
 | `KSQL_DEFAULT_LISTENERS`         | Comma-separated list of listeners that listen for API requests over either HTTP or HTTPS. | `http://0.0.0.0:8088`                     |

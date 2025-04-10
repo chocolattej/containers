@@ -188,18 +188,18 @@ mysql_exec_initial_dump() {
     local -r dump_file="${DB_DATA_DIR}/dump_all_databases.sql"
 
     info "MariaDB dump master data start..."
-    debug "Lock master databases for write operations"
-    echo "FLUSH TABLES WITH READ LOCK;" | mysql_remote_execute "$DB_MASTER_HOST" "$DB_MASTER_PORT_NUMBER" "mysql" "$DB_MASTER_ROOT_USER" "$DB_MASTER_ROOT_PASSWORD"
-
-    read -r log_file log_position <<< "$(echo "SHOW MASTER STATUS;" | mysql_remote_execute_print_output "$DB_MASTER_HOST" "$DB_MASTER_PORT_NUMBER" "mysql" "$DB_MASTER_ROOT_USER" "$DB_MASTER_ROOT_PASSWORD" | awk 'NR==1 {print $1, $2}')"
-    debug "File: $log_file and Position: $log_position"
-
-    debug "Start dump process databases"
-    mysqldump --verbose --all-databases -h "$DB_MASTER_HOST" -P "$DB_MASTER_PORT_NUMBER" -u "$DB_MASTER_ROOT_USER" -p"$DB_MASTER_ROOT_PASSWORD" > "$dump_file"
+    mysqldump --verbose --single-transaction --quick --source-data=2 --all-databases -h "$DB_MASTER_HOST" -P "$DB_MASTER_PORT_NUMBER" -u "$DB_MASTER_ROOT_USER" -p"$DB_MASTER_ROOT_PASSWORD" > "$dump_file"
     debug "Finish dump databases"
 
-    debug "Unlock master databases for write operations"
-    echo "UNLOCK TABLES;" | mysql_remote_execute "$DB_MASTER_HOST" "$DB_MASTER_PORT_NUMBER" "mysql" "$DB_MASTER_ROOT_USER" "$DB_MASTER_ROOT_PASSWORD"
+    # Look for the line containing "CHANGE REPLICATION SOURCE"
+    while IFS= read -r line; do
+      if [[ "$line" =~ CHANGE\ REPLICATION\ SOURCE\ TO\ SOURCE_LOG_FILE=\'([^\']+)\'\,\ SOURCE_LOG_POS=([0-9]+)\; ]]; then
+        log_file="${BASH_REMATCH[1]}"
+        log_position="${BASH_REMATCH[2]}"
+        break
+      fi
+    done < "$dump_file"
+    debug "File: $log_file and Position: $log_position"
 
     debug "Start import dump databases"
     mysql_execute < "$dump_file"
@@ -433,7 +433,7 @@ mysql_custom_scripts() {
 }
 
 ########################
-# Starts MySQL/MariaDB in the background and waits until it's ready
+# Starts MariaDB in the background and waits until it's ready
 # Globals:
 #   DB_*
 # Arguments:
@@ -442,20 +442,22 @@ mysql_custom_scripts() {
 #   None
 #########################
 mysql_start_bg() {
-    local -a flags=("--defaults-file=${DB_CONF_FILE}" "--basedir=${DB_BASE_DIR}" "--datadir=${DB_DATA_DIR}" "--socket=${DB_SOCKET_FILE}")
-
-    # Only allow local connections until MySQL is fully initialized, to avoid apps trying to connect to MySQL before it is fully initialized
-    flags+=("--bind-address=127.0.0.1")
-
-    # Add flags specified via the 'DB_EXTRA_FLAGS' environment variable
-    read -r -a db_extra_flags <<< "$(mysql_extra_flags)"
-    [[ "${#db_extra_flags[@]}" -gt 0 ]] && flags+=("${db_extra_flags[@]}")
+    local -a flags=(
+        "--defaults-file=${DB_CONF_FILE}"
+        "--basedir=${DB_BASE_DIR}"
+        "--datadir=${DB_DATA_DIR}"
+        "--socket=${DB_SOCKET_FILE}"
+        # Don't allow connection with TCP/IP until MariaDB is fully initialized, to avoid apps trying to connect to MariaDB before it is fully initialized
+        "--skip-networking"
+        # The slave should only start in 'run.sh', otherwise user credentials would be needed for any connection
+        "--skip-slave-start"
+    )
 
     # Do not start as root, to avoid permission issues
     am_i_root && flags+=("--user=${DB_DAEMON_USER}")
-
-    # The slave should only start in 'run.sh', elseways user credentials would be needed for any connection
-    flags+=("--skip-slave-start")
+    # Add flags specified via the 'DB_EXTRA_FLAGS' environment variable
+    read -r -a db_extra_flags <<< "$(mysql_extra_flags)"
+    [[ "${#db_extra_flags[@]}" -gt 0 ]] && flags+=("${db_extra_flags[@]}")
     flags+=("$@")
 
     is_mysql_running && return

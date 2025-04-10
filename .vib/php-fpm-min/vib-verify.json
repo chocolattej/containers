@@ -20,6 +20,12 @@
             "architectures": [
               "linux/amd64",
               "linux/arm64"
+            ],
+            "size_thresholds": [
+              {
+                "size": "45MB",
+                "kind": "COMPRESSED"
+              }
             ]
           }
         },
@@ -33,6 +39,21 @@
     },
     "verify": {
       "actions": [
+        {
+          "action_id": "goss",
+          "params": {
+            "resources": {
+              "path": "/.vib"
+            },
+            "tests_file": "php-fpm-min/goss/goss.yaml",
+            "vars_file": "php-fpm-min/goss/vars.yaml",
+            "remote": {
+              "pod": {
+                "workload": "deploy-php-fpm-min"
+              }
+            }
+          }
+        },
         {
           "action_id": "trivy",
           "params": {
